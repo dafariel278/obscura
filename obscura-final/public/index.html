@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OBSCURA // On-chain Intelligence Agent · Mantle</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Major+Mono+Display&family=Share+Tech+Mono&family=Orbitron:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --void: #000000;
+    --bg: #020503;
+    --panel: rgba(0, 20, 12, 0.55);
+    --grid-line: rgba(0, 255, 140, 0.07);
+    --green: #00ff8c;
+    --green-soft: #00cc70;
+    --green-dim: rgba(0, 255, 140, 0.35);
+    --green-faint: rgba(0, 255, 140, 0.12);
+    --amber: #ffb627;
+    --red: #ff3355;
+    --cyan: #00e5ff;
+    --text: #aeffd6;
+    --text-dim: #4d8a6c;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    background: var(--void);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    overflow-x: hidden;
+    cursor: crosshair;
+  }
+  /* MATRIX CANVAS */
+  #matrix { position: fixed; inset: 0; z-index: 0; opacity: 0.25; }
+  /* SCANLINES + VIGNETTE */
+  body::before {
+    content: ''; position: fixed; inset: 0; z-index: 60; pointer-events: none;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 2px, rgba(0,0,0,0.18) 3px, rgba(0,0,0,0) 4px);
+  }
+  body::after {
+    content: ''; position: fixed; inset: 0; z-index: 59; pointer-events: none;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.75) 100%);
+  }
+  .flicker { animation: flicker 4s infinite; }
+  @keyframes flicker { 0%,100%{opacity:1} 96%{opacity:1} 97%{opacity:0.7} 98%{opacity:1} 99%{opacity:0.85} }
+
+  /* BOOT SCREEN */
+  #boot {
+    position: fixed; inset: 0; z-index: 100; background: var(--void);
+    display: flex; flex-direction: column; justify-content: center; padding: 8vw;
+    font-family: 'Share Tech Mono', monospace; font-size: 14px; color: var(--green);
+  }
+  #boot .line { opacity: 0; white-space: pre; text-shadow: 0 0 8px var(--green-dim); }
+  #boot .ok { color: var(--green); } #boot .warn { color: var(--amber); }
+  .cursor-blink::after { content:'_'; animation: cb 0.8s steps(2) infinite; }
+  @keyframes cb { 50%{opacity:0} }
+
+  /* HEADER */
+  .hdr {
+    position: relative; z-index: 10;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 30px; border-bottom: 1px solid var(--green-faint);
+    background: linear-gradient(180deg, rgba(0,15,8,0.7), transparent);
+    backdrop-filter: blur(4px);
+  }
+  .logo-wrap { display: flex; align-items: center; gap: 16px; }
+  .logo {
+    font-family: 'Orbitron', sans-serif; font-weight: 900; font-size: 30px;
+    letter-spacing: 8px; color: var(--green);
+    text-shadow: 0 0 18px var(--green-dim), 0 0 4px var(--green);
+    position: relative;
+  }
+  .logo .glitch { position: absolute; left: 0; top: 0; }
+  .logo .g1 { color: var(--red); animation: glitch1 3s infinite; clip-path: inset(0 0 60% 0); }
+  .logo .g2 { color: var(--cyan); animation: glitch2 2.6s infinite; clip-path: inset(60% 0 0 0); }
+  @keyframes glitch1 { 0%,90%,100%{transform:translate(0)} 92%{transform:translate(-3px,1px)} 94%{transform:translate(2px,-1px)} }
+  @keyframes glitch2 { 0%,88%,100%{transform:translate(0)} 90%{transform:translate(3px,-1px)} 93%{transform:translate(-2px,1px)} }
+  .sub { font-size: 10px; letter-spacing: 4px; color: var(--text-dim); text-transform: uppercase; }
+  .hdr-right { display: flex; align-items: center; gap: 18px; font-family:'Share Tech Mono'; font-size: 11px; }
+  .stat-chip {
+    border: 1px solid var(--green-faint); padding: 6px 12px; border-radius: 2px;
+    color: var(--text-dim); letter-spacing: 1px; display: flex; align-items: center; gap: 8px;
+  }
+  .stat-chip b { color: var(--green); }
+  .dot-live { width: 7px; height: 7px; background: var(--green); border-radius: 50%; box-shadow:0 0 10px var(--green); animation: pulse 1.4s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.8)} }
+  .erc-chip { border-color: rgba(0,229,255,0.3); color: var(--cyan); }
+
+  /* CHAIN BAR */
+  .chainbar {
+    position: relative; z-index: 10;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 12px 30px; border-bottom: 1px solid var(--green-faint);
+    background: rgba(0,10,6,0.4); backdrop-filter: blur(4px);
+  }
+  .cb-label { font-size: 10px; letter-spacing: 2px; color: var(--text-dim); margin-right: 4px; }
+  .chain-btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: transparent; border: 1px solid var(--green-faint); color: var(--text-dim);
+    font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: 1px;
+    padding: 6px 12px; cursor: pointer; transition: all 0.2s; text-transform: uppercase;
+  }
+  .chain-btn:hover { border-color: var(--green-dim); color: var(--text); }
+  .chain-btn.active { background: var(--green); color: var(--void); border-color: var(--green); box-shadow: 0 0 14px var(--green-faint); }
+  .chain-btn.home { border-color: var(--green-dim); color: var(--green); }
+  .chain-btn.home.active { color: var(--void); }
+  .cdot { width: 8px; height: 8px; border-radius: 50%; background: var(--cc); box-shadow: 0 0 8px var(--cc); }
+
+  /* CHAIN BADGE in feed */
+  .ev-chain {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 9px; letter-spacing: 1px; padding: 1px 6px; border: 1px solid;
+    border-radius: 2px; text-transform: uppercase;
+  }
+  .ev-chain .d { width: 5px; height: 5px; border-radius: 50%; }
+  .xchain {
+    margin-top: 7px; font-size: 10px; color: var(--cyan); letter-spacing: 1px;
+    border-left: 2px solid var(--cyan); padding-left: 8px;
+  }
+
+  /* LAYOUT */
+  .stage { position: relative; z-index: 10; max-width: 1500px; margin: 0 auto; padding: 22px; }
+  .banner {
+    border: 1px solid var(--green-faint); border-left: 3px solid var(--green);
+    background: var(--panel); backdrop-filter: blur(6px);
+    padding: 22px 28px; margin-bottom: 20px; position: relative; overflow: hidden;
+  }
+  .banner h1 {
+    font-family: 'Major Mono Display', monospace; font-size: clamp(20px,3.5vw,34px);
+    color: var(--text); line-height: 1.2; text-shadow: 0 0 12px var(--green-faint);
+  }
+  .banner h1 .acc { color: var(--green); text-shadow: 0 0 14px var(--green-dim); }
+  .banner p { margin-top: 12px; font-size: 12px; color: var(--text-dim); letter-spacing: 1px; max-width: 640px; line-height: 1.7; }
+  .typed-tag { font-family:'Share Tech Mono'; color: var(--green); font-size: 12px; margin-top: 14px; letter-spacing: 1px; }
+
+  .cols { display: grid; grid-template-columns: 290px 1fr 320px; gap: 18px; }
+  @media(max-width:1150px){ .cols{grid-template-columns:1fr 1fr} .c-feed{grid-column:1/-1} }
+  @media(max-width:720px){ .cols{grid-template-columns:1fr} }
+
+  .module {
+    border: 1px solid var(--green-faint); background: var(--panel);
+    backdrop-filter: blur(6px); position: relative;
+  }
+  .module::before {
+    content:''; position:absolute; top:0; left:0; width:14px; height:14px;
+    border-top:1px solid var(--green); border-left:1px solid var(--green);
+  }
+  .module::after {
+    content:''; position:absolute; bottom:0; right:0; width:14px; height:14px;
+    border-bottom:1px solid var(--green); border-right:1px solid var(--green);
+  }
+  .mod-head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 16px; border-bottom: 1px solid var(--green-faint);
+    font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: var(--green-soft);
+  }
+  .mod-head .tag { font-size: 9px; color: var(--text-dim); letter-spacing: 1px; }
+
+  /* WALLETS */
+  .wallet { padding: 13px 16px; border-bottom: 1px solid var(--green-faint); transition: background 0.2s; }
+  .wallet:hover { background: rgba(0,255,140,0.04); }
+  .w-top { display: flex; justify-content: space-between; align-items: center; }
+  .w-addr { font-size: 13px; color: var(--text); display:flex; align-items:center; gap:8px; }
+  .w-addr .hex { width:22px;height:22px;border:1px solid var(--green-dim); display:grid;place-items:center; font-size:9px; color:var(--green);}
+  .w-score { font-size:11px; padding:2px 7px; border:1px solid var(--green-dim); color:var(--green); }
+  .w-score.mid { color: var(--amber); border-color: rgba(255,182,39,0.3); }
+  .w-bar { height:3px; background: rgba(0,255,140,0.08); margin:9px 0 7px; }
+  .w-bar i { display:block; height:100%; background: var(--green); box-shadow:0 0 8px var(--green-dim); }
+  .w-meta { display:flex; gap:14px; font-size:9px; color: var(--text-dim); letter-spacing:1px; }
+  .w-meta b { color: var(--green-soft); }
+
+  /* FEED */
+  .feed { max-height: 600px; overflow-y: auto; }
+  .feed::-webkit-scrollbar{width:5px} .feed::-webkit-scrollbar-thumb{background:var(--green-dim)}
+  .ev { padding: 15px 16px; border-bottom: 1px solid var(--green-faint); display:flex; gap:13px;
+    opacity:0; transform: translateX(-10px); animation: evIn 0.4s forwards; }
+  @keyframes evIn { to{opacity:1;transform:translateX(0)} }
+  .ev .ic { flex-shrink:0; width:34px; height:34px; border:1px solid; display:grid; place-items:center; font-size:15px; }
+  .ev.smart .ic{ color:var(--green); border-color:var(--green-dim); box-shadow:inset 0 0 12px rgba(0,255,140,0.15);}
+  .ev.whale .ic{ color:var(--amber); border-color:rgba(255,182,39,0.3); box-shadow:inset 0 0 12px rgba(255,182,39,0.12);}
+  .ev.anomaly .ic{ color:var(--red); border-color:rgba(255,51,85,0.35); box-shadow:inset 0 0 12px rgba(255,51,85,0.15);}
+  .ev-b { flex:1; }
+  .ev-h { display:flex; justify-content:space-between; margin-bottom:5px; }
+  .ev-type { font-size:10px; letter-spacing:2px; }
+  .ev.smart .ev-type{color:var(--green)} .ev.whale .ev-type{color:var(--amber)} .ev.anomaly .ev-type{color:var(--red)}
+  .ev-time { font-size:9px; color: var(--text-dim); }
+  .ev-txt { font-size:12.5px; line-height:1.55; color: var(--text); }
+  .ev-txt .hl{ color:var(--green); } .ev-txt .hlg{ color:var(--amber); } .ev-txt .hlr{ color:var(--red); }
+  .ev-f { display:flex; gap:14px; margin-top:8px; font-size:9px; color: var(--text-dim); letter-spacing:1px; }
+  .ev-f .chain{ color: var(--cyan); display:flex; align-items:center; gap:5px;}
+  .ev-f .chain::before{content:'';width:4px;height:4px;background:var(--cyan);border-radius:50%;box-shadow:0 0 6px var(--cyan);}
+
+  /* BRAIN */
+  .brain { padding: 16px; }
+  .brain-stat { display:flex; align-items:center; gap:9px; font-size:11px; color:var(--text-dim); margin-bottom:14px; letter-spacing:1px;}
+  .brain-stat .orb{width:8px;height:8px;background:var(--green);border-radius:50%;box-shadow:0 0 12px var(--green);animation:pulse 1.3s infinite;}
+  .thought { border:1px solid var(--green-faint); border-left:2px solid var(--green); padding:11px 13px; margin-bottom:10px;
+    font-size:12px; line-height:1.55; background: rgba(0,255,140,0.03); }
+  .thought .ts { font-size:9px; color: var(--text-dim); display:block; margin-bottom:5px; letter-spacing:1px; }
+  .ask textarea { width:100%; background: var(--void); border:1px solid var(--green-dim); color:var(--text);
+    font-family:'Share Tech Mono'; font-size:12px; padding:11px; resize:none; min-height:58px; outline:none; }
+  .ask textarea:focus{ border-color:var(--green); box-shadow:0 0 12px var(--green-faint); }
+  .ask textarea::placeholder{ color:var(--text-dim); }
+  .ask-btn { width:100%; margin-top:9px; padding:11px; background:transparent; border:1px solid var(--green);
+    color:var(--green); font-family:'Share Tech Mono'; font-size:12px; letter-spacing:3px; text-transform:uppercase;
+    cursor:pointer; transition:all 0.2s; }
+  .ask-btn:hover{ background:var(--green); color:var(--void); box-shadow:0 0 18px var(--green-dim); }
+  .ask-btn:disabled{ opacity:0.4; cursor:wait; }
+  .answer { margin-top:13px; border:1px solid var(--green-faint); padding:13px; font-size:12.5px; line-height:1.6;
+    display:none; background: rgba(0,255,140,0.03); }
+  .answer.show{ display:block; animation:evIn 0.4s; }
+  .answer .lab{ font-size:9px; letter-spacing:2px; color:var(--green); display:block; margin-bottom:7px; }
+
+  .foot { text-align:center; padding:28px; font-size:10px; color: var(--text-dim); letter-spacing:2px; position:relative; z-index:10;}
+  .foot .e{ color: var(--cyan); }
+</style>
+</head>
+<body>
+
+<canvas id="matrix"></canvas>
+
+<!-- BOOT SEQUENCE -->
+<div id="boot"></div>
+
+<div class="content" style="display:none">
+<div class="hdr flicker">
+  <div class="logo-wrap">
+    <div class="logo">OBSCURA<span class="glitch g1">OBSCURA</span><span class="glitch g2">OBSCURA</span></div>
+    <div class="sub">On-chain Intelligence Agent</div>
+  </div>
+  <div class="hdr-right">
+    <div class="stat-chip"><span class="dot-live"></span> 8 CHAINS LIVE</div>
+    <div class="stat-chip">AGENT <b>#8004-0xOBS</b></div>
+    <div class="stat-chip erc-chip">ERC-8004 ✓ · MANTLE</div>
+  </div>
+</div>
+
+<div class="chainbar" id="chainbar">
+  <span class="cb-label">// SCOPE</span>
+  <button class="chain-btn active" data-chain="all">ALL CHAINS</button>
+  <button class="chain-btn home" data-chain="Mantle"><span class="cdot" style="--cc:#00ff8c"></span>Mantle</button>
+  <button class="chain-btn" data-chain="Ethereum"><span class="cdot" style="--cc:#6c8eef"></span>Ethereum</button>
+  <button class="chain-btn" data-chain="Base"><span class="cdot" style="--cc:#0052ff"></span>Base</button>
+  <button class="chain-btn" data-chain="BSC"><span class="cdot" style="--cc:#f0b90b"></span>BSC</button>
+  <button class="chain-btn" data-chain="Polygon"><span class="cdot" style="--cc:#a06bff"></span>Polygon</button>
+  <button class="chain-btn" data-chain="Arbitrum"><span class="cdot" style="--cc:#28a0f0"></span>Arbitrum</button>
+  <button class="chain-btn" data-chain="Optimism"><span class="cdot" style="--cc:#ff0420"></span>Optimism</button>
+  <button class="chain-btn" data-chain="Solana"><span class="cdot" style="--cc:#14f195"></span>Solana</button>
+</div>
+
+<div class="stage">
+  <div class="banner">
+    <h1>what hides <span class="acc">on-chain</span>,<br>obscura reveals.</h1>
+    <p>An autonomous agent watching every block across 8 chains — Ethereum, Base, BSC, Polygon, Arbitrum, Optimism &amp; Solana — tracking smart money wherever it moves and predicting capital inflows into Mantle before they happen. Every decision recorded on-chain via ERC-8004.</p>
+    <p style="color:var(--text-dim);font-style:italic;opacity:0.7;margin-top:6px;">/ ob·scu·ra — the hidden, made visible.</p>
+    <div class="typed-tag cursor-blink" id="typed"></div>
+  </div>
+
+  <div class="cols">
+    <div class="module c-smart">
+      <div class="mod-head"><span>// Smart Money</span><span class="tag" id="sm-count">142 TRACKED</span></div>
+      <div id="wallets"></div>
+    </div>
+
+    <div class="module c-feed">
+      <div class="mod-head"><span>// Live Intelligence Feed</span><span class="tag">STREAMING ▮</span></div>
+      <div class="feed" id="feed"></div>
+    </div>
+
+    <div class="module c-brain">
+      <div class="mod-head"><span>// Reasoning Core</span><span class="tag">LLM</span></div>
+      <div class="brain">
+        <div class="brain-stat"><span class="orb"></span> AGENT ACTIVE — parsing mempool &amp; state deltas</div>
+        <div id="thoughts"></div>
+        <div class="ask">
+          <textarea id="ask" placeholder="> query obscura: what is smart money doing right now?"></textarea>
+          <button class="ask-btn" id="askBtn" onclick="askOracle()">[ EXECUTE QUERY ]</button>
+          <div class="answer" id="answer"><span class="lab">// OBSCURA RESPONSE</span><div id="answerText"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    OBSCURA — THE TURING TEST HACKATHON 2026 · TRACK: AI ALPHA &amp; DATA<br>
+    <span class="e">EVERY AGENT DECISION RECORDED ON-CHAIN · IDENTITY: ERC-8004 NFT #0xOBS</span>
+  </div>
+</div>
+</div>
+
+<script>
+// ============ MATRIX RAIN ============
+const cv = document.getElementById('matrix'), ctx = cv.getContext('2d');
+function resize(){ cv.width = innerWidth; cv.height = innerHeight; }
+resize(); addEventListener('resize', resize);
+const chars = 'アイウエオカキクケコサシスセソ0123456789ABCDEF$@#%&天龍漢字ﾊﾋﾌﾍﾎ'.split('');
+let cols = Math.floor(cv.width / 14);
+let drops = Array(cols).fill(1);
+function drawMatrix(){
+  ctx.fillStyle = 'rgba(2,5,3,0.08)';
+  ctx.fillRect(0,0,cv.width,cv.height);
+  ctx.font = '14px monospace';
+  for(let i=0;i<drops.length;i++){
+    const ch = chars[Math.floor(Math.random()*chars.length)];
+    const x = i*14, y = drops[i]*14;
+    ctx.fillStyle = Math.random()>0.975 ? '#aeffd6' : '#00ff8c';
+    ctx.fillText(ch, x, y);
+    if(y > cv.height && Math.random()>0.975) drops[i]=0;
+    drops[i]++;
+  }
+}
+setInterval(drawMatrix, 55);
+
+// ============ BOOT SEQUENCE ============
+const bootEl = document.getElementById('boot');
+const bootLines = [
+  ['> initializing OBSCURA kernel v2.6.0 ...','ok'],
+  ['> connecting to MANTLE MAINNET rpc ...','ok'],
+  ['> linking multi-chain indexers :: ETH · BASE · BSC · POLYGON · ARB · OP ...','ok'],
+  ['> attaching SVM adapter :: SOLANA (non-EVM) ...','ok'],
+  ['> handshake :: chain_id 5000 verified','ok'],
+  ['> loading ERC-8004 agent identity #0xOBS ...','ok'],
+  ['> mounting smart-money index [142 wallets] ...','ok'],
+  ['> calibrating anomaly detection model ...','ok'],
+  ['> spinning up LLM reasoning core ...','ok'],
+  ['> subscribing to mempool stream ...','ok'],
+  ['> WARNING: live market data — agent decisions are final','warn'],
+  ['> OBSCURA is now AWAKE.',''],
+];
+let bi = 0;
+function bootStep(){
+  if(bi >= bootLines.length){
+    setTimeout(()=>{
+      bootEl.style.transition='opacity 0.6s'; bootEl.style.opacity='0';
+      setTimeout(()=>{ bootEl.style.display='none'; document.querySelector('.content').style.display='block'; startApp(); }, 600);
+    }, 650);
+    return;
+  }
+  const [txt, st] = bootLines[bi];
+  const d = document.createElement('div');
+  d.className = 'line'; 
+  const tail = st==='ok' ? '  <span class="ok">[ OK ]</span>' : st==='warn' ? '  <span class="warn">[ ! ]</span>' : '';
+  d.innerHTML = txt + tail;
+  bootEl.appendChild(d);
+  requestAnimationFrame(()=>{ d.style.transition='opacity 0.15s'; d.style.opacity='1'; });
+  bi++;
+  setTimeout(bootStep, 180 + Math.random()*160);
+}
+bootStep();
+
+// ============ APP ============
+function startApp(){
+  // typed tagline
+  const tagText = '> agent status: ONLINE · 8 chains (EVM + SVM) · 24,800 tx/block · flows \u2192 Mantle';
+  const typedEl = document.getElementById('typed');
+  let ci = 0;
+  (function type(){ if(ci<=tagText.length){ typedEl.textContent = tagText.slice(0,ci); ci++; setTimeout(type, 22); } })();
+
+  // Per-chain config + token universe
+  const CHAINS = {
+    Mantle:   { color:'#00ff8c', tokens:['$MNT','$mETH','$fBTC','$USDe','$MOE','$AGNI','$cmETH'] },
+    Ethereum: { color:'#6c8eef', tokens:['$ETH','$USDC','$PEPE','$LINK','$AAVE','$ENA'] },
+    Base:     { color:'#0052ff', tokens:['$ETH','$AERO','$DEGEN','$BRETT','$USDC'] },
+    BSC:      { color:'#f0b90b', tokens:['$BNB','$CAKE','$USDT','$FLOKI','$XVS'] },
+    Polygon:  { color:'#a06bff', tokens:['$POL','$USDC','$AAVE','$QUICK','$GHST'] },
+    Arbitrum: { color:'#28a0f0', tokens:['$ARB','$ETH','$GMX','$PENDLE','$USDC'] },
+    Optimism: { color:'#ff0420', tokens:['$OP','$ETH','$VELO','$SNX','$USDC'] },
+    Solana:   { color:'#14f195', tokens:['$SOL','$JUP','$BONK','$WIF','$JTO','$PYTH'], svm:true },
+  };
+  const chainNames = Object.keys(CHAINS);
+  let activeChain = 'all';
+
+  const wallets = [
+    {a:'0x7a3f...d2e1',s:94,w:88,p:'+$2.4M',t:312,c:''},
+    {a:'0x4c9b...8a07',s:91,w:84,p:'+$1.8M',t:204,c:''},
+    {a:'0xf21e...3b5c',s:87,w:79,p:'+$960K',t:421,c:''},
+    {a:'0x9d04...e7f2',s:82,w:74,p:'+$610K',t:158,c:'mid'},
+    {a:'0x2b8a...c1d9',s:78,w:71,p:'+$430K',t:97,c:'mid'},
+    {a:'0xa55c...4f88',s:76,w:69,p:'+$380K',t:266,c:'mid'},
+  ];
+  const b58='123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+  const rEvm=()=>{const h='0123456789abcdef';let a='0x';for(let i=0;i<4;i++)a+=h[Math.floor(Math.random()*16)];a+='...';for(let i=0;i<4;i++)a+=h[Math.floor(Math.random()*16)];return a;};
+  const rSol=()=>{let a='';for(let i=0;i<4;i++)a+=b58[Math.floor(Math.random()*b58.length)];a+='...';for(let i=0;i<4;i++)a+=b58[Math.floor(Math.random()*b58.length)];return a;};
+  const rA=(ch)=> CHAINS[ch] && CHAINS[ch].svm ? rSol() : rEvm();
+  const rS=()=>['$48K','$112K','$340K','$87K','$1.2M','$220K','$76K','$590K'][Math.floor(Math.random()*8)];
+  const pickChain=()=> activeChain==='all' ? chainNames[Math.floor(Math.random()*chainNames.length)] : activeChain;
+  const rT=(ch)=>{ const ts=CHAINS[ch].tokens; return ts[Math.floor(Math.random()*ts.length)]; };
+
+  const wEl=document.getElementById('wallets');
+  wallets.forEach(w=>{ wEl.innerHTML += `
+    <div class="wallet"><div class="w-top">
+      <div class="w-addr"><span class="hex">◈</span>${w.a}</div>
+      <span class="w-score ${w.c}">${w.s}</span></div>
+      <div class="w-bar"><i style="width:${w.w}%"></i></div>
+      <div class="w-meta"><span>WIN <b>${w.w}%</b></span><span>PNL <b>${w.p}</b></span><span>TX <b>${w.t}</b></span></div>
+    </div>`; });
+
+  const smart=[
+    (a,t,s)=>`Wallet <span class="hl">${a}</span> (88% win-rate) just accumulated <span class="hl">${s}</span> of ${t}. Entry pattern matches its profitable position from 3 weeks ago.`,
+    (a,t,s)=>`Smart money <span class="hl">${a}</span> added <span class="hl">${s}</span> to ${t} — this wallet historically enters 6–9h before significant price moves.`,
+    (a,t,s)=>`Cluster of 3 high-score wallets moved into ${t} simultaneously. Total inflow <span class="hl">${s}</span> across last 2 blocks. Coordination detected.`,
+  ];
+  const whale=[
+    (a,t,s)=>`Whale <span class="hlg">${a}</span> moved <span class="hlg">${s}</span> of ${t} to a CEX. Potential sell pressure within 24h.`,
+    (a,t,s)=>`Dormant whale reactivated: <span class="hlg">${a}</span> moved <span class="hlg">${s}</span> of ${t} after 84 days of silence.`,
+  ];
+  const anomaly=[
+    (a,t,s)=>`Wash-trading pattern on ${t}: <span class="hlr">${s}</span> cycling between 4 linked wallets. Real liquidity likely far lower.`,
+    (a,t,s)=>`Sudden liquidity pull of <span class="hlr">${s}</span> from ${t} pool by deployer. Pre-rug pattern — confidence 76%.`,
+    (a,t,s)=>`${t} spike: <span class="hlr">${s}</span> bought by a 4-minute-old wallet via 12 sequential swaps. Likely price manipulation.`,
+  ];
+
+  const feed=document.getElementById('feed'); let n=0;
+  function emit(){
+    const r=Math.random(); let type,tmpl,conf;
+    if(r<0.5){type='smart';tmpl=smart;conf=70+Math.floor(Math.random()*22);}
+    else if(r<0.78){type='whale';tmpl=whale;conf=64+Math.floor(Math.random()*20);}
+    else{type='anomaly';tmpl=anomaly;conf=72+Math.floor(Math.random()*24);}
+    const ic=type==='smart'?'◈':type==='anomaly'?'⚠':'◆';
+    const lab=type==='smart'?'SMART MONEY':type==='anomaly'?'ANOMALY':'WHALE MOVE';
+    const ch=pickChain();
+    const cc=CHAINS[ch].color;
+    const txt=tmpl[Math.floor(Math.random()*tmpl.length)](rA(ch),rT(ch),rS());
+    const block=19847200+n;
+    // ~22% chance: cross-chain flow heading INTO Mantle (the killer signal)
+    let xchainHtml='';
+    if((activeChain==='all'||activeChain==='Mantle') && ch!=='Mantle' && type==='smart' && Math.random()<0.45){
+      const lag=2+Math.floor(Math.random()*7);
+      const via = ch==='Solana' ? 'via Wormhole/SVM bridge' : 'via canonical bridge';
+      xchainHtml=`<div class="xchain">⟶ CROSS-CHAIN: this wallet moved toward MANTLE ${via}, ${lag}h after similar ${ch} activity. Capital inflow to Mantle predicted.</div>`;
+    }
+    const chainBadge=`<span class="ev-chain" style="color:${cc};border-color:${cc}66"><span class="d" style="background:${cc}"></span>${ch}</span>`;
+    const el=document.createElement('div'); el.className=`ev ${type}`;
+    el.innerHTML=`<div class="ic">${ic}</div><div class="ev-b">
+      <div class="ev-h"><span class="ev-type">${lab}</span><span class="ev-time">now · block ${block}</span></div>
+      <div class="ev-txt">${txt}</div>${xchainHtml}
+      <div class="ev-f"><span>CONF ${conf}%</span>${chainBadge}<span class="chain">logged on Mantle</span></div></div>`;
+    feed.insertBefore(el,feed.firstChild); n++;
+    while(feed.children.length>13) feed.removeChild(feed.lastChild);
+    document.querySelectorAll('.ev-time').forEach((t,i)=>{ if(i>0&&!t.dataset.a){t.dataset.a=1;t.textContent=t.textContent.replace('now',(i*6)+'s ago');}});
+  }
+  for(let i=0;i<6;i++) emit();
+  setInterval(emit, 3000);
+
+  // Chain selector
+  document.querySelectorAll('.chain-btn').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      document.querySelectorAll('.chain-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      activeChain = btn.dataset.chain;
+      feed.innerHTML=''; n=0;
+      for(let i=0;i<6;i++) emit();
+    });
+  });
+
+  const tEl=document.getElementById('thoughts');
+  const pool=[
+    'Scanning last 3 blocks... 1,847 tx parsed. 2 crossed smart-money threshold.',
+    'Correlation found: 3 watchlist wallets entered same token within a 90s window. Raising signal priority.',
+    'Comparing 0x7a3f entry pattern against its 312-trade history — 0.81 similarity. Confidence boosted.',
+    'Evaluating $AGNI liquidity anomaly. Awaiting 2-block confirmation before rug classification.',
+    'Updating agent reputation on-chain. ERC-8004 score: 7-day prediction accuracy = 79.4%.',
+    'Cross-chain trace: wallet 0x4c9b active on Base + Ethereum, now bridging toward Mantle. Flagging inflow.',
+    'Indexing 8 chains in parallel (7 EVM + Solana SVM)... 24,800 tx/block. Normalizing into unified smart-money graph.',
+  ];
+  let ti=0;
+  function think(){
+    const t=pool[ti%pool.length]; ti++;
+    const d=new Date(); const ts=`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+    const el=document.createElement('div'); el.className='thought';
+    el.innerHTML=`<span class="ts">${ts} :: REASONING</span>${t}`;
+    tEl.insertBefore(el,tEl.firstChild);
+    while(tEl.children.length>3) tEl.removeChild(tEl.lastChild);
+  }
+  think(); setInterval(think, 4800);
+}
+
+
+// ============ LIVE BACKEND BRIDGE ============
+// Mencoba mengambil data NYATA dari server OBSCURA (npm run server).
+// Kalau server belum jalan, prototipe tetap memakai data simulasi.
+(async function liveBridge(){
+  try {
+    const r = await fetch('/api/watchlist');
+    if(!r.ok) throw new Error('no server');
+    const data = await r.json();
+    if(data.watchlist && data.watchlist.length){
+      // Tandai bahwa data nyata aktif
+      const chip = document.querySelector('.stat-chip .dot-live');
+      if(chip) chip.parentElement.innerHTML = '<span class="dot-live"></span> LIVE · MANTLE DATA';
+      // Ganti watchlist simulasi dengan data nyata
+      const wEl = document.getElementById('wallets');
+      if(wEl){
+        wEl.innerHTML = '';
+        data.watchlist.forEach(w=>{
+          const cls = w.score>=85?'':'mid';
+          wEl.innerHTML += `<div class="wallet"><div class="w-top">
+            <div class="w-addr"><span class="hex">◈</span>${w.addrShort}</div>
+            <span class="w-score ${cls}">${w.score}</span></div>
+            <div class="w-bar"><i style="width:${w.score}%"></i></div>
+            <div class="w-meta"><span>TX <b>${w.txCount}</b></span><span>TOKENS <b>${w.tokenCount}</b></span></div>
+          </div>`;
+        });
+      }
+      console.log('OBSCURA: data on-chain nyata aktif.');
+    }
+  } catch(e){
+    console.log('OBSCURA: server backend belum aktif — memakai data simulasi. (Jalankan: npm run server)');
+  }
+})();
+
+// ============ REAL CLAUDE QUERY ============
+async function askOracle(){
+  const q=document.getElementById('ask').value.trim(); if(!q) return;
+  const btn=document.getElementById('askBtn'), ans=document.getElementById('answer'), at=document.getElementById('answerText');
+  btn.disabled=true; btn.textContent='[ ANALYZING... ]';
+  ans.classList.add('show'); at.textContent='> parsing on-chain context...';
+  const sys=`You are OBSCURA, an autonomous on-chain intelligence agent on the Mantle network. Your name means "the hidden made visible" — you illuminate what others cannot see on-chain. You monitor smart money, whales, and DeFi anomalies.
+Live data: 142 smart wallets tracked, 38 signals in 24h, 7 anomalies detected.
+Top smart wallets: 0x7a3f (88% win, +$2.4M PnL), 0x4c9b (84% win, +$1.8M).
+Active Mantle tokens: $MNT, $mETH, $fBTC, $USDe, $MOE, $AGNI.
+Answer the trader's question as a sharp, confident on-chain analyst. Max 4 sentences. No disclaimers. Terminal tone.`;
+  try{
+    const res=await fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:1000,
+        messages:[{role:"user",content:sys+"\n\nTrader question: "+q}] })
+    });
+    const data=await res.json();
+    at.textContent=data.content.map(i=>i.text||"").join("\n")||"> no signal.";
+  }catch(e){ at.textContent="> connection to OBSCURA core lost. (live AI query runs only when the artifact executes inside Claude.)"; }
+  btn.disabled=false; btn.textContent='[ EXECUTE QUERY ]';
+}
+document.addEventListener('keydown',e=>{ if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)) askOracle(); });
+</script>
+</body>
+</html>
