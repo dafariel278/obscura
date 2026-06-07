@@ -110,25 +110,43 @@ Answer as a sharp, confident on-chain analyst. Max 3 sentences. No disclaimers. 
     let answer = "";
 
     if (openRouterKey) {
-      const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${openRouterKey}`,
-          "HTTP-Referer": "https://getobscura.vercel.app",
-          "X-Title": "OBSCURA",
-        },
-        body: JSON.stringify({
-          model: "mistralai/mistral-7b-instruct:free",
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: question },
-          ],
-          max_tokens: 250,
-        }),
-      });
-      const d = await r.json();
-      answer = d.choices?.[0]?.message?.content?.trim() || "Signal unclear. Try again.";
+      // Coba model gratis secara berurutan sampai ada yang berhasil
+      const FREE_MODELS = [
+        "google/gemma-4-27b-it:free",
+        "qwen/qwen3-next-80b-a3b-instruct:free",
+        "openai/gpt-oss-20b:free",
+        "nvidia/nemotron-3-super-120b-a12b:free",
+        "meta-llama/llama-3.2-3b-instruct:free",
+      ];
+
+      for (const model of FREE_MODELS) {
+        try {
+          const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${openRouterKey}`,
+              "HTTP-Referer": "https://getobscura.vercel.app",
+              "X-Title": "OBSCURA",
+            },
+            body: JSON.stringify({
+              model,
+              messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: question },
+              ],
+              max_tokens: 250,
+            }),
+          });
+          const d = await r.json();
+          console.log(`[query] model=${model} status=${r.status} choices=${d.choices?.length}`);
+          const text = d.choices?.[0]?.message?.content?.trim();
+          if (text) { answer = text; break; }
+        } catch (modelErr) {
+          console.log(`[query] model ${model} failed: ${modelErr.message}`);
+        }
+      }
+      if (!answer) answer = "All reasoning models temporarily unavailable. Try again in a moment.";
 
     } else {
       const r = await fetch("https://api.anthropic.com/v1/messages", {
