@@ -1,6 +1,6 @@
 // ============================================================
-// OBSCURA · SERVER — versi dengan on-chain logging (npm run server)
-// File: src/server.js — GANTI yang lama dengan file ini
+// OBSCURA · SERVER LENGKAP — dengan /api/query (OpenRouter/Anthropic)
+// File ini menggantikan src/server.js sepenuhnya.
 // ============================================================
 import express from "express";
 import cors from "cors";
@@ -18,6 +18,7 @@ import { initLedger, logDecision, getAgentReputation, SignalType } from "./ledge
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(cors());
+app.use(express.json());
 app.use(express.static(path.join(__dirname, "..", "public")));
 
 const PORT = process.env.PORT || 3000;
@@ -42,30 +43,20 @@ async function refresh() {
     const ranked = rankWallets(wallets, 12);
     cache.watchlist = ranked.map((w) => ({ ...w, addrShort: short(w.addr) }));
 
-    // Bangun feed + LOG setiap sinyal ke Mantle on-chain
     const feed = [];
     for (let i = 0; i < Math.min(5, ranked.length); i++) {
       const w = ranked[i];
-
-      // Tentukan tipe sinyal berdasarkan skor
       let type = SignalType.SmartMoney;
       if (w.score < 30) type = SignalType.Anomaly;
-      else if (w.score > 85) type = SignalType.SmartMoney;
-
       const conf = Math.min(w.score, 95);
-      const subject = `${w.addr ? w.addr.slice(0,10) : 'wallet'} score=${w.score} tx=${w.txCount}`;
+      const addr = w.addr ? w.addr.slice(0, 10) : "wallet";
+      const subject = `${addr} score=${w.score} tx=${w.txCount}`;
       const evText = { wallet: w.addrShort, score: w.score, token: "MNT", txCount: w.txCount };
-
-      // Narasi AI (opsional)
-      const text = i < 2 ? await narrate(evText) : `Wallet ${w.addrShort} aktif (skor ${w.score}).`;
-
-      // ★ CATAT KE MANTLE ON-CHAIN ★
+      const text = i < 2 ? await narrate(evText) : `Wallet ${w.addrShort} active (score ${w.score}).`;
       await logDecision(type, conf, subject);
-
       feed.push({ type: "smart", confidence: conf, chain: "Mantle", text, wallet: w.addrShort });
     }
 
-    // Baca reputasi terbaru dari contract
     cache.reputation = await getAgentReputation();
     cache.feed = feed;
     cache.updated = Date.now();
@@ -75,16 +66,13 @@ async function refresh() {
   return cache;
 }
 
-// Routes
+// ── ROUTES ──────────────────────────────────────────────────
+
 app.get("/api/status", async (req, res) => {
   const rep = await getAgentReputation();
   res.json({
-    agent: "OBSCURA",
-    chain: "Mantle",
-    chainId: CHAINS.mantle.chainId,
-    online: true,
-    contract: process.env.LEDGER_ADDRESS || null,
-    reputation: rep,
+    agent: "OBSCURA", chain: "Mantle", chainId: CHAINS.mantle.chainId,
+    online: true, contract: process.env.LEDGER_ADDRESS || null, reputation: rep,
   });
 });
 
@@ -98,17 +86,84 @@ app.get("/api/feed", async (req, res) => {
   res.json({ feed: c.feed, reputation: c.reputation, updated: c.updated });
 });
 
-// Startup
+// ★ REASONING CORE — query endpoint ★
+app.post("/api/query", async (req, res) => {
+  const { question } = req.body;
+  if (!question) return res.status(400).json({ error: "question required" });
+
+  const openRouterKey = process.env.OPENROUTER_API_KEY;
+  const anthropicKey  = process.env.ANTHROPIC_API_KEY;
+
+  if (!openRouterKey && !anthropicKey) {
+    return res.json({
+      answer: "OBSCURA reasoning core offline. Set OPENROUTER_API_KEY in .env to activate."
+    });
+  }
+
+  const systemPrompt = `You are OBSCURA, a Mantle-native on-chain intelligence agent.
+You monitor smart money across 8 chains: Ethereum, Base, BSC, Polygon, Arbitrum, Optimism, Solana, and Mantle.
+Your specialty: detecting capital flows INTO Mantle before they happen.
+Live: 142 smart wallets tracked. Decisions logged on-chain at 0x1E375B72Aa2d8dF87AA97DBa506C22311Efc6148.
+Answer as a sharp, confident on-chain analyst. Max 3 sentences. No disclaimers. Terminal voice.`;
+
+  try {
+    let answer = "";
+
+    if (openRouterKey) {
+      const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${openRouterKey}`,
+          "HTTP-Referer": "https://getobscura.vercel.app",
+          "X-Title": "OBSCURA",
+        },
+        body: JSON.stringify({
+          model: "mistralai/mistral-7b-instruct:free",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: question },
+          ],
+          max_tokens: 250,
+        }),
+      });
+      const d = await r.json();
+      answer = d.choices?.[0]?.message?.content?.trim() || "Signal unclear. Try again.";
+
+    } else {
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": anthropicKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 250,
+          system: systemPrompt,
+          messages: [{ role: "user", content: question }],
+        }),
+      });
+      const d = await r.json();
+      answer = d.content?.[0]?.text?.trim() || "Signal unclear. Try again.";
+    }
+
+    res.json({ answer });
+  } catch (e) {
+    res.json({ answer: `Core error: ${e.message}` });
+  }
+});
+
+// ── STARTUP ─────────────────────────────────────────────────
 (async () => {
   console.log("\n  OBSCURA :: memulai server...\n");
   const prov = await ensureProvider();
-
-  // Inisialisasi ledger (on-chain logging)
   await initLedger(prov);
 
   app.listen(PORT, () => {
     console.log(`\n  OBSCURA server aktif di http://localhost:${PORT}`);
-    console.log(`  API: /api/watchlist · /api/feed · /api/status`);
+    console.log(`  API: /api/watchlist · /api/feed · /api/status · /api/query`);
     console.log(`  Buka tab PORTS → port 3000 untuk dashboard. ✦\n`);
   });
 })();

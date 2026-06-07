@@ -476,26 +476,23 @@ function startApp(){
   think(); setInterval(think, 4800);
 }
 
-
 // ============ LIVE BACKEND BRIDGE ============
-// Mencoba mengambil data NYATA dari server OBSCURA (npm run server).
-// Kalau server belum jalan, prototipe tetap memakai data simulasi.
+// Tries to fetch real Mantle data from OBSCURA backend server.
+// Falls back to simulation if server is not running.
 (async function liveBridge(){
-  try {
-    const r = await fetch('/api/watchlist');
+  try{
+    const r=await fetch('/api/watchlist',{signal:AbortSignal.timeout(3000)});
     if(!r.ok) throw new Error('no server');
-    const data = await r.json();
-    if(data.watchlist && data.watchlist.length){
-      // Tandai bahwa data nyata aktif
-      const chip = document.querySelector('.stat-chip .dot-live');
-      if(chip) chip.parentElement.innerHTML = '<span class="dot-live"></span> LIVE · MANTLE DATA';
-      // Ganti watchlist simulasi dengan data nyata
-      const wEl = document.getElementById('wallets');
+    const data=await r.json();
+    if(data.watchlist&&data.watchlist.length){
+      const chip=document.querySelector('.stat-chip .dot-live');
+      if(chip) chip.parentElement.innerHTML='<span class="dot-live"></span> LIVE · MANTLE DATA';
+      const wEl=document.getElementById('wallets');
       if(wEl){
-        wEl.innerHTML = '';
+        wEl.innerHTML='';
         data.watchlist.forEach(w=>{
-          const cls = w.score>=85?'':'mid';
-          wEl.innerHTML += `<div class="wallet"><div class="w-top">
+          const cls=w.score>=85?'':'mid';
+          wEl.innerHTML+=`<div class="wallet"><div class="w-top">
             <div class="w-addr"><span class="hex">◈</span>${w.addrShort}</div>
             <span class="w-score ${cls}">${w.score}</span></div>
             <div class="w-bar"><i style="width:${w.score}%"></i></div>
@@ -503,33 +500,36 @@ function startApp(){
           </div>`;
         });
       }
-      console.log('OBSCURA: data on-chain nyata aktif.');
+      console.log('OBSCURA: live on-chain data active.');
     }
-  } catch(e){
-    console.log('OBSCURA: server backend belum aktif — memakai data simulasi. (Jalankan: npm run server)');
+  }catch(e){
+    console.log('OBSCURA: backend not detected — using simulation. (Run: npm run server)');
   }
 })();
 
-// ============ REAL CLAUDE QUERY ============
+// ============ REASONING CORE QUERY ============
+// Calls /api/query on backend (OpenRouter/Anthropic).
+// Works when npm run server is running in Codespaces.
 async function askOracle(){
   const q=document.getElementById('ask').value.trim(); if(!q) return;
-  const btn=document.getElementById('askBtn'), ans=document.getElementById('answer'), at=document.getElementById('answerText');
+  const btn=document.getElementById('askBtn');
+  const ans=document.getElementById('answer');
+  const at=document.getElementById('answerText');
   btn.disabled=true; btn.textContent='[ ANALYZING... ]';
-  ans.classList.add('show'); at.textContent='> parsing on-chain context...';
-  const sys=`You are OBSCURA, an autonomous on-chain intelligence agent on the Mantle network. Your name means "the hidden made visible" — you illuminate what others cannot see on-chain. You monitor smart money, whales, and DeFi anomalies.
-Live data: 142 smart wallets tracked, 38 signals in 24h, 7 anomalies detected.
-Top smart wallets: 0x7a3f (88% win, +$2.4M PnL), 0x4c9b (84% win, +$1.8M).
-Active Mantle tokens: $MNT, $mETH, $fBTC, $USDe, $MOE, $AGNI.
-Answer the trader's question as a sharp, confident on-chain analyst. Max 4 sentences. No disclaimers. Terminal tone.`;
+  ans.classList.add('show'); at.textContent='> querying OBSCURA reasoning core...';
   try{
-    const res=await fetch("https://api.anthropic.com/v1/messages",{
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:1000,
-        messages:[{role:"user",content:sys+"\n\nTrader question: "+q}] })
+    const res=await fetch('/api/query',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({question:q}),
+      signal:AbortSignal.timeout(15000)
     });
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const data=await res.json();
-    at.textContent=data.content.map(i=>i.text||"").join("\n")||"> no signal.";
-  }catch(e){ at.textContent="> connection to OBSCURA core lost. (live AI query runs only when the artifact executes inside Claude.)"; }
+    at.textContent=data.answer||'> no signal detected.';
+  }catch(e){
+    at.textContent='> OBSCURA backend offline.\n  Run "npm run server" in Codespaces to activate reasoning core.\n  Error: '+e.message;
+  }
   btn.disabled=false; btn.textContent='[ EXECUTE QUERY ]';
 }
 document.addEventListener('keydown',e=>{ if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)) askOracle(); });
