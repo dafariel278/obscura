@@ -1,12 +1,13 @@
 {
   "name": "obscura",
   "version": "1.0.0",
-  "description": "OBSCURA \u2014 Mantle-native, multi-chain on-chain intelligence agent",
+  "description": "OBSCURA — Mantle-native, multi-chain on-chain intelligence agent",
   "type": "module",
   "scripts": {
     "ping": "node src/01-ping-mantle.js",
     "scan": "node src/02-scan-block.js",
     "score": "node src/03-smart-score.js",
+    "agent": "node src/agent.js",
     "server": "node src/server.js",
     "compile": "node scripts/compile.js",
     "deploy": "node scripts/deploy.js",
