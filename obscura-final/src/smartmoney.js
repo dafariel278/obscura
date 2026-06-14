@@ -85,7 +85,7 @@ export function computeScore(w) {
 export function rankWallets(walletsMap, topN = 12) {
   const scored = [];
   for (const w of walletsMap.values()) {
-    if (w.txCount < 2) continue; // buang noise
+    if (w.txCount < 1) continue; // buang noise
     scored.push({
       addr: w.addr,
       score: computeScore(w),

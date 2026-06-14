@@ -8,6 +8,7 @@
     "scan": "node src/02-scan-block.js",
     "score": "node src/03-smart-score.js",
     "agent": "node src/agent.js",
+    "telegram": "node src/telegram.js",
     "server": "node src/server.js",
     "compile": "node scripts/compile.js",
     "deploy": "node scripts/deploy.js",

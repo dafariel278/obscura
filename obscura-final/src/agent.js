@@ -143,7 +143,7 @@ async function runAgentCycle() {
 
   // STEP 1: Gather on-chain data
   console.log("  [agent] STEP 1 — gathering on-chain data from Mantle...");
-  const { wallets, fromBlock, latest, totalLogs } = await gatherWalletActivity(provider, 40);
+  const { wallets, fromBlock, latest, totalLogs } = await gatherWalletActivity(provider, 200);
   console.log(`  [agent] Scanned blocks ${fromBlock}–${latest} | ${totalLogs} transfers | ${wallets.size} wallets`);
 
   // STEP 2: Score wallets (Brain)
